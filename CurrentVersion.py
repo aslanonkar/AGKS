@@ -344,9 +344,14 @@ class SmartSecurityCameraSystem(ctk.CTk):
         # Create the video display area with a canvas
         self.video_frame = ctk.CTkFrame(self, width=800, height=600)
         self.video_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.video_frame.grid_rowconfigure(0, weight=1)
+        self.video_frame.grid_columnconfigure(0, weight=1)
 
-        self.video_canvas = tk.Canvas(self.video_frame, bg="black", width=800, height=600)
-        self.video_canvas.pack(fill="both", expand=True)
+        self.video_canvas = tk.Canvas(self.video_frame, bg="black", highlightthickness=0)
+        self.video_canvas.grid(row=0, column=0, sticky="nsew")
+
+        # Bind the canvas resize event
+        self.video_canvas.bind("<Configure>", self.resize_video_frame)
 
         # Add this near the beginning of the __init__ method
         self.presets_folder = "presets"
@@ -404,6 +409,27 @@ class SmartSecurityCameraSystem(ctk.CTk):
 
         self.create_control_buttons()
 
+    def resize_video_frame(self, event):
+        # Get the current size of the canvas
+        canvas_width = event.width
+        canvas_height = event.height
+
+        if self.cap is not None:
+            # Get the video's aspect ratio
+            video_aspect_ratio = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH) / self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            # Calculate the new size while maintaining aspect ratio
+            if canvas_width / canvas_height > video_aspect_ratio:
+                # Canvas is wider than the video
+                new_height = canvas_height
+                new_width = int(new_height * video_aspect_ratio)
+            else:
+                # Canvas is taller than the video
+                new_width = canvas_width
+                new_height = int(new_width / video_aspect_ratio)
+            
+            # Update the canvas size
+            self.video_canvas.config(width=new_width, height=new_height)
 
     def create_right_section(self):
         # Right section: Preset controls, Options, and Performance Mode
@@ -481,30 +507,31 @@ class SmartSecurityCameraSystem(ctk.CTk):
     def create_control_buttons(self):
         # Left section: Control buttons
         self.left_frame = ctk.CTkFrame(self.button_frame)
-        self.left_frame.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
+        self.left_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         # Configure left frame rows and columns
-        for i in range(3):
-            self.left_frame.grid_rowconfigure(i, weight=1)
         for i in range(2):
+            self.left_frame.grid_rowconfigure(i, weight=1)
             self.left_frame.grid_columnconfigure(i, weight=1)
 
-        button_params = {"width": 80, "height": 25, "font": ("Helvetica", 10)}
+        button_params = {
+            "width": 120,  # Increased width for better proportions
+            "height": 35,  # Increased height for better clickability
+            "font": ("Helvetica", 12),  # Slightly larger font
+            "corner_radius": 8  # Rounded corners for a modern look
+        }
 
         self.pause_button = ctk.CTkButton(self.left_frame, text="Pause", command=self.pause_video, **button_params)
-        self.pause_button.grid(row=0, column=0, padx=1, pady=1, sticky="nsew")
+        self.pause_button.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
         self.restart_button = ctk.CTkButton(self.left_frame, text="Restart", command=self.restart_video, **button_params)
-        self.restart_button.grid(row=0, column=1, padx=1, pady=1, sticky="nsew")
+        self.restart_button.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
 
         self.select_video_button = ctk.CTkButton(self.left_frame, text="Select Video", command=self.select_video_file, **button_params)
-        self.select_video_button.grid(row=1, column=0, padx=1, pady=1, sticky="nsew")
+        self.select_video_button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
         self.switch_webcam_button = ctk.CTkButton(self.left_frame, text="Switch to Webcam", command=self.switch_to_webcam, **button_params)
-        self.switch_webcam_button.grid(row=1, column=1, padx=1, pady=1, sticky="nsew")
-
-        self.select_tracker_button = ctk.CTkButton(self.left_frame, text="Select Tracker", command=self.select_tracker, **button_params)
-        self.select_tracker_button.grid(row=2, column=0, columnspan=2, padx=1, pady=1, sticky="nsew")
+        self.switch_webcam_button.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
         # Middle section: Confidence threshold, loitering threshold, filters, and toggles
         self.middle_frame = ctk.CTkFrame(self.button_frame)
@@ -676,12 +703,16 @@ class SmartSecurityCameraSystem(ctk.CTk):
                     self.after(10, self.update_frame)
                     return
 
-                 # Write frame if recording
+                # Write frame if recording
                 if self.is_recording and self.out is not None:
                     self.out.write(frame)
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = cv2.resize(frame, (800, 600))
+                
+                # Resize frame to fit the canvas
+                canvas_width = self.video_canvas.winfo_width()
+                canvas_height = self.video_canvas.winfo_height()
+                frame = cv2.resize(frame, (canvas_width, canvas_height))
 
                 # Perform object detection
                 results = self.detect_objects(frame)
@@ -969,8 +1000,6 @@ class SmartSecurityCameraSystem(ctk.CTk):
         self.stop_video()
         self.start_video_capture()
 
-    def select_tracker(self):
-        messagebox.showinfo("Select Tracker", "Tracker selection not implemented yet.")
 
     def update_confidence_threshold(self, value):
         self.confidence_threshold = float(value)

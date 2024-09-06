@@ -6,5 +6,4 @@ restricted_area:
   top_left_x: 340
   top_left_y: 166
 restricted_area_enabled: true
-video_path: "D:/AFO/Sample Videos/Blink Indoor Wi-Fi Camera \u2013 Sample Footage\
-  \ 2 (Up.mp4"
+#video_path: " "

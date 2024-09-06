@@ -15,10 +15,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import json
-from concurrent.futures import ThreadPoolExecutor
-import queue
-from threading import Thread
-
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -77,12 +73,6 @@ class DatabaseManager:
                 cursor.execute(f'ALTER TABLE anomalies ADD COLUMN {column} INTEGER')
 
             conn.commit()
-
-    def log_detections_and_anomalies(self, results, anomalies):
-        for _, detection in results.iterrows():
-            self.db_manager.log_detection(detection, self.frame_count)
-        for anomaly in anomalies:
-            self.db_manager.log_anomaly(*anomaly)
 
     def log_detection(self, detection, frame_number):
         with self.get_connection() as conn:
@@ -344,23 +334,6 @@ class SmartSecurityCameraSystem(ctk.CTk):
         self.preset_selector = ctk.CTkComboBox(self.right_frame, values=self.get_preset_list(), command=self.load_preset)
         self.preset_selector.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="ew")
 
-         # Add these new attributes
-        self.frame_queue = queue.Queue(maxsize=30)  # Buffer for 30 frames
-        self.result_queue = queue.Queue()
-        self.executor = ThreadPoolExecutor(max_workers=3)  # Adjust based on your CPU
-        self.processing_fps = 0
-        self.display_fps = 0
-        self.last_fps_update = time.time()
-        self.frame_count = 0
-        self.processed_count = 0
-        
-        self.fps_label = None
-        self.last_fps_update = time.time()
-        self.processed_frame_queue = queue.Queue(maxsize=30)
-        self.detection_thread = None
-        self.is_detecting = False
-        self.target_fps = 30
-        self.last_frame_time = 0
     def load_yolo_model(self):
         try:
             self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
@@ -371,19 +344,20 @@ class SmartSecurityCameraSystem(ctk.CTk):
         # Create the video display area with a canvas
         self.video_frame = ctk.CTkFrame(self, width=800, height=600)
         self.video_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.video_frame.grid_rowconfigure(0, weight=1)
+        self.video_frame.grid_columnconfigure(0, weight=1)
 
-        self.video_canvas = tk.Canvas(self.video_frame, bg="black", width=800, height=600)
-        self.video_canvas.pack(fill="both", expand=True)
+        self.video_canvas = tk.Canvas(self.video_frame, bg="black", highlightthickness=0)
+        self.video_canvas.grid(row=0, column=0, sticky="nsew")
+
+        # Bind the canvas resize event
+        self.video_canvas.bind("<Configure>", self.resize_video_frame)
 
         # Add this near the beginning of the __init__ method
         self.presets_folder = "presets"
         if not os.path.exists(self.presets_folder):
             os.makedirs(self.presets_folder)
         
-
-        # Add FPS label to the bottom of the video frame
-        self.fps_label = ctk.CTkLabel(self.video_frame, text="FPS: N/A")
-        self.fps_label.pack(side="bottom", padx=5, pady=5)
 
         # Bind mouse events for restricted area selection
         self.video_canvas.bind("<ButtonPress-1>", self.on_mouse_down)
@@ -434,8 +408,28 @@ class SmartSecurityCameraSystem(ctk.CTk):
         self.button_frame.grid_columnconfigure(1, weight=3)  # Middle section (wider)
 
         self.create_control_buttons()
-        self.target_fps = 30  # Set your desired frame rate
-        self.last_frame_time = 0
+
+    def resize_video_frame(self, event):
+        # Get the current size of the canvas
+        canvas_width = event.width
+        canvas_height = event.height
+
+        if self.cap is not None:
+            # Get the video's aspect ratio
+            video_aspect_ratio = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH) / self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            # Calculate the new size while maintaining aspect ratio
+            if canvas_width / canvas_height > video_aspect_ratio:
+                # Canvas is wider than the video
+                new_height = canvas_height
+                new_width = int(new_height * video_aspect_ratio)
+            else:
+                # Canvas is taller than the video
+                new_width = canvas_width
+                new_height = int(new_width / video_aspect_ratio)
+            
+            # Update the canvas size
+            self.video_canvas.config(width=new_width, height=new_height)
 
     def create_right_section(self):
         # Right section: Preset controls, Options, and Performance Mode
@@ -513,30 +507,31 @@ class SmartSecurityCameraSystem(ctk.CTk):
     def create_control_buttons(self):
         # Left section: Control buttons
         self.left_frame = ctk.CTkFrame(self.button_frame)
-        self.left_frame.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
+        self.left_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
         # Configure left frame rows and columns
-        for i in range(3):
-            self.left_frame.grid_rowconfigure(i, weight=1)
         for i in range(2):
+            self.left_frame.grid_rowconfigure(i, weight=1)
             self.left_frame.grid_columnconfigure(i, weight=1)
 
-        button_params = {"width": 80, "height": 25, "font": ("Helvetica", 10)}
+        button_params = {
+            "width": 120,  # Increased width for better proportions
+            "height": 35,  # Increased height for better clickability
+            "font": ("Helvetica", 12),  # Slightly larger font
+            "corner_radius": 8  # Rounded corners for a modern look
+        }
 
         self.pause_button = ctk.CTkButton(self.left_frame, text="Pause", command=self.pause_video, **button_params)
-        self.pause_button.grid(row=0, column=0, padx=1, pady=1, sticky="nsew")
+        self.pause_button.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
         self.restart_button = ctk.CTkButton(self.left_frame, text="Restart", command=self.restart_video, **button_params)
-        self.restart_button.grid(row=0, column=1, padx=1, pady=1, sticky="nsew")
+        self.restart_button.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
 
         self.select_video_button = ctk.CTkButton(self.left_frame, text="Select Video", command=self.select_video_file, **button_params)
-        self.select_video_button.grid(row=1, column=0, padx=1, pady=1, sticky="nsew")
+        self.select_video_button.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
         self.switch_webcam_button = ctk.CTkButton(self.left_frame, text="Switch to Webcam", command=self.switch_to_webcam, **button_params)
-        self.switch_webcam_button.grid(row=1, column=1, padx=1, pady=1, sticky="nsew")
-
-        self.select_tracker_button = ctk.CTkButton(self.left_frame, text="Select Tracker", command=self.select_tracker, **button_params)
-        self.select_tracker_button.grid(row=2, column=0, columnspan=2, padx=1, pady=1, sticky="nsew")
+        self.switch_webcam_button.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
         # Middle section: Confidence threshold, loitering threshold, filters, and toggles
         self.middle_frame = ctk.CTkFrame(self.button_frame)
@@ -682,88 +677,78 @@ class SmartSecurityCameraSystem(ctk.CTk):
         self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
 
     def start_video_capture(self):
-        if self.cap is None:
+        if self.is_webcam:
+            self.cap = cv2.VideoCapture(0)
+        elif self.video_path:
+            self.cap = cv2.VideoCapture(self.video_path)
+        else:
+            messagebox.showerror("Error", "No video source selected.")
             return
+
+        if not self.cap.isOpened():
+            messagebox.showerror("Error", "Unable to open video source.")
+            return
+
         self.is_playing = True
-        self.is_detecting = True
-        self.detection_thread = Thread(target=self.detection_loop)
-        self.detection_thread.start()
         self.update_frame()
 
     def update_frame(self):
         if self.is_playing and self.cap is not None:
-            current_time = time.time()
-            if (current_time - self.last_frame_time) < (1.0 / self.target_fps):
-                self.after(1, self.update_frame)
-                return
-
-            self.last_frame_time = current_time
             ret, frame = self.cap.read()
             if ret:
                 self.frame_count += 1
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
-                # Add frame to queue for processing
-                if self.frame_queue.full():
-                    self.frame_queue.get()  # Remove oldest frame if queue is full
-                self.frame_queue.put(frame_rgb)
+                # Skip frames in performance mode
+                if self.performance_mode and (self.frame_count % (self.frame_skip + 1) != 0):
+                    self.after(10, self.update_frame)
+                    return
 
-                # Display processed frame if available, otherwise display current frame
-                if not self.processed_frame_queue.empty():
-                    processed_frame, results, anomalies = self.processed_frame_queue.get()
-                    self.display_frame(processed_frame)
-                    self.log_detections_and_anomalies(results, anomalies)
-                else:
-                    self.display_frame(frame_rgb)
+                # Write frame if recording
+                if self.is_recording and self.out is not None:
+                    self.out.write(frame)
 
-                self.update_fps()
-                self.after(1, self.update_frame)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Resize frame to fit the canvas
+                canvas_width = self.video_canvas.winfo_width()
+                canvas_height = self.video_canvas.winfo_height()
+                frame = cv2.resize(frame, (canvas_width, canvas_height))
+
+                # Perform object detection
+                results = self.detect_objects(frame)
+
+                # Check for anomalies
+                if self.anomaly_detection_enabled.get():
+                    self.detect_anomalies(frame, results)
+
+                # Draw bounding boxes and labels
+                frame_with_boxes = self.draw_boxes(frame, results)
+
+                self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_with_boxes))
+                self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+                self.after(10, self.update_frame)
             else:
                 self.stop_video()
-
-    def process_frames(self):
-        while self.is_playing:
-            try:
-                frame = self.frame_queue.get(timeout=1)
-                if self.performance_mode:
-                    frame = cv2.resize(frame, (400, 300))  # Reduce resolution in performance mode
-
-                results = self.detect_objects(frame)
-                anomalies = self.detect_anomalies(frame, results) if self.anomaly_detection_enabled.get() else []
-
-                processed_frame = self.draw_boxes(frame, results)
-                self.result_queue.put((processed_frame, results, anomalies))
-            except queue.Empty:
-                continue
 
     def detect_objects(self, frame):
         if self.model is None:
             return []
 
-        # Use half-precision floating point format for faster inference
-        with torch.no_grad():
-            results = self.model(frame.astype(np.float32) / 255.0)
-        
+        results = self.model(frame)
         detections = results.pandas().xyxy[0]
         filtered_detections = detections[
             (detections['confidence'] >= self.confidence_threshold) &
             (detections['name'].isin(self.detection_classes))
         ]
         
+        # Log each detection to the database
+        for _, detection in filtered_detections.iterrows():
+            self.db_manager.log_detection(detection, self.frame_count)
+        
+        # Check and send notifications
+        self.check_and_send_notifications(filtered_detections, [])  # Pass an empty list for anomalies for now
+        
         return filtered_detections
-
-    def display_frame(self, frame):
-        self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame))
-        self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
-
-    def update_fps(self):
-        current_time = time.time()
-        if current_time - self.last_fps_update >= 1.0:
-            self.display_fps = self.frame_count / (current_time - self.last_fps_update)
-            self.frame_count = 0
-            self.last_fps_update = current_time
-            if self.fps_label:
-                self.fps_label.configure(text=f"FPS: {self.display_fps:.2f}")
 
     def detect_anomalies(self, frame, detections):
         anomaly_detected = False
@@ -984,13 +969,11 @@ class SmartSecurityCameraSystem(ctk.CTk):
 
     def stop_video(self):
         self.is_playing = False
-        self.is_detecting = False
-        if self.detection_thread:
-            self.detection_thread.join()
-        if self.cap:
+        if self.cap is not None:
             self.cap.release()
-        self.cap = None
-    
+            self.cap = None
+        self.display_blank_image()
+
     def pause_video(self):
         if self.is_playing:
             self.is_playing = False
@@ -1017,20 +1000,6 @@ class SmartSecurityCameraSystem(ctk.CTk):
         self.stop_video()
         self.start_video_capture()
 
-    def detection_loop(self):
-        while self.is_detecting:
-            if not self.frame_queue.empty():
-                frame = self.frame_queue.get()
-                results = self.detect_objects(frame)
-                if self.anomaly_detection_enabled.get():
-                    anomalies = self.detect_anomalies(frame, results)
-                else:
-                    anomalies = []
-                processed_frame = self.draw_boxes(frame, results)
-                self.processed_frame_queue.put((processed_frame, results, anomalies))
-
-    def select_tracker(self):
-        messagebox.showinfo("Select Tracker", "Tracker selection not implemented yet.")
 
     def update_confidence_threshold(self, value):
         self.confidence_threshold = float(value)
@@ -1396,8 +1365,6 @@ class SmartSecurityCameraSystem(ctk.CTk):
         }
         
     def on_closing(self):
-        self.is_playing = False
-        self.executor.shutdown(wait=False)
         self.stop_recording()
         self.stop_video()
         self.destroy()
