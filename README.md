@@ -1,11 +1,11 @@
-﻿# Akıllı Güvenlik Kamera Sistemi
+﻿# Akıllı Güvenlik Kamera Sistemi (AGKS)
 
 Bu proje, gerçek zamanlı nesne tespiti ve anormallik algılama özelliklerine sahip bir akıllı güvenlik kamera sistemi uygulamasıdır.
 
 ## Özellikler
 
 - Gerçek zamanlı video işleme
-- Nesne tespiti ve sınıflandırması (insan, araç, hayvan, diğer)
+- YOLOv5 tabanlı nesne tespiti ve sınıflandırması (insan, araç, hayvan, diğer)
 - Anormallik algılama (hızlı hareket, ani görünme/kaybolma, kısıtlı alan ihlali)
 - Otomatik kayıt özelliği
 - Kullanıcı dostu arayüz
@@ -14,27 +14,39 @@ Bu proje, gerçek zamanlı nesne tespiti ve anormallik algılama özelliklerine 
 
 ## Kurulum
 
-1. Bu repository'yi klonlayın:
+1. Python 3.8 veya daha yüksek bir sürümün yüklü olduğundan emin olun.
+
+2. Sanal ortam oluşturun:
+   ```
+   python -m venv agks_env
+   ```
+
+3. Sanal ortamı aktifleştirin:
+   - Windows için:
+     ```
+     agks_env\Scripts\activate
+     ```
+   - macOS ve Linux için:
+     ```
+     source agks_env/bin/activate
+     ```
+
+4. Projeyi klonlayın:
    ```
    git clone https://github.com/aslanonkar/AGKS.git
    cd AGKS
    ```
 
-2. Gerekli kütüphaneleri yükleyin:
+5. Gerekli bileşenleri yükleyin:
    ```
    pip install -r requirements.txt
    ```
 
-3. Veritabanını oluşturun:
-   ```
-   sqlite3 security_camera.db < database_schema.sql
-   ```
-
-4. Uygulamayı çalıştırın:
+6. Uygulamayı çalıştırın:
    ```
    python SSCS.py
    ```
- 
+
 ## Kullanım
 
 1. Uygulama başlatıldığında, ana pencere açılacaktır.
@@ -50,5 +62,6 @@ Bu proje, gerçek zamanlı nesne tespiti ve anormallik algılama özelliklerine 
 - `SSCS.py`: Ana uygulama dosyası
 - `requirements.txt`: Gerekli Python kütüphaneleri
 - `database_schema.sql`: Veritabanı şeması ve örnek veri
-- `technical_doc.md`: Teknik dokümantasyon
+- `README.md`: Proje dokümantasyonu
+- `Teknik.md`: Teknik dokümantasyon
 
