@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+
+# Build and distribution
+build/
+dist/
+*.spec
+
+# Databases
+*.db
+
+# Configuration
+config/config.yaml
+
+# Large data files
+*.mp4
+*.pt
+
+# Sample videos
+sample_videos/
+
+# YOLOv5
+yolov5/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db

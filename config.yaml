@@ -1,0 +1,10 @@
+﻿anomaly_detection_enabled: true
+recording_enabled: false
+restricted_area:
+  bottom_right_x: 783
+  bottom_right_y: 431
+  top_left_x: 340
+  top_left_y: 166
+restricted_area_enabled: true
+video_path: "D:/AFO/Sample Videos/Blink Indoor Wi-Fi Camera \u2013 Sample Footage\
+  \ 2 (Up.mp4"
